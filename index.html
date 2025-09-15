@@ -293,13 +293,13 @@ No Room,Ahmed hesham,ahmed.hesham@must.edu.eg,TA,Mechanical Engineering,NA,NA,0,
             const peopleList = people.map(p => `- ${p.name}, ${p.position}, ${p.department}`).join('\n');
             const prompt = `Summarize the people in this room, considering their positions and departments:\n\nRoom: ${room}\n\nMembers:\n${peopleList}\n\nProvide a concise, professional summary in a single paragraph.`;
 
-            const apiKey = "";
+            // Replace YOUR_API_KEY_HERE with your actual API key from Google AI Studio.
+            const apiKey = "AIzaSyAWy-NG0H_bXGCty7unXVGHMQ5cWf1FBKg";
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
 
             try {
                 const payload = {
                     contents: [{ parts: [{ text: prompt }] }],
-                    // The tools property was removed as it's not needed for this text generation task
                 };
 
                 const response = await fetch(apiUrl, {
@@ -332,13 +332,13 @@ No Room,Ahmed hesham,ahmed.hesham@must.edu.eg,TA,Mechanical Engineering,NA,NA,0,
                 - Department: ${person.department}
                 - Email: ${person.email}`;
 
-            const apiKey = "";
+            // Replace YOUR_API_KEY_HERE with your actual API key from Google AI Studio.
+            const apiKey = "AIzaSyAWy-NG0H_bXGCty7unXVGHMQ5cWf1FBKg";
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
 
             try {
                 const payload = {
                     contents: [{ parts: [{ text: prompt }] }],
-                    // The tools property was removed as it's not needed for this text generation task
                 };
 
                 const response = await fetch(apiUrl, {
