@@ -5,409 +5,465 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Room Directory</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, onSnapshot, collection, setDoc, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .room-card {
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .room-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+        /* Style for scrollbar on details section */
+        .details::-webkit-scrollbar {
+            width: 8px;
+        }
+        .details::-webkit-scrollbar-track {
+            background: #e5e7eb;
+            border-radius: 10px;
+        }
+        .details::-webkit-scrollbar-thumb {
+            background-color: #d1d5db;
+            border-radius: 10px;
+            border: 2px solid #e5e7eb;
+        }
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background-color: white;
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            max-width: 90%;
+            max-height: 80%;
+            overflow-y: auto;
+            position: relative;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 p-4 md:p-8">
 
-        // Firebase configuration from your project
-        const firebaseConfig = {
-            apiKey: "AIzaSyBsJtyoxPSTumEkzrOIXhIPb0zApxhmIs8",
-            authDomain: "rooms-databse.firebaseapp.com",
-            projectId: "rooms-databse",
-            storageBucket: "rooms-databse.firebasestorage.app",
-            messagingSenderId: "235846398985",
-            appId: "1:235846398985:web:511b1f6a3a62bdb7ab74d8",
-            measurementId: "G-J69VLF5J54"
-        };
-        
-        // Initialize Firebase
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        const auth = getAuth(app);
+    <div class="max-w-xs sm:max-w-md md:max-w-2xl lg:max-w-4xl mx-auto">
+        <!-- Header Section - Text size adapts to screen size -->
+        <header class="text-center mb-8 md:mb-10">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-800">Room Directory</h1>
+            <p class="mt-2 text-sm md:text-lg text-gray-600">Explore and search for room information and members.</p>
+        </header>
 
-        // API Key for Gemini API
-        const apiKey = "AIzaSyAWy-NG0H_bXGCty7unXVGHMQ5cWf1FBKg";
+        <!-- Search Bar - Full width on all devices -->
+        <div class="mb-6 md:mb-8">
+            <input type="text" id="searchInput" placeholder="Search for a room or person..." class="w-full px-5 py-3 border border-gray-300 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all">
+        </div>
 
-        // Global state for application
-        let rooms = {};
-        let userId = null;
-        let authReady = false;
+        <!-- Room List - Grid layout adapts to screen size -->
+        <div id="roomList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+            <!-- Room cards will be dynamically inserted here by JavaScript -->
+        </div>
+    </div>
 
-        // Utility to generate unique IDs
-        const generateId = () => {
-            return `_${Math.random().toString(36).substr(2, 9)}`;
-        };
+    <!-- Modal for displaying generated content -->
+    <div id="contentModal" class="modal hidden">
+        <div class="modal-content">
+            <h3 id="modalTitle" class="text-xl font-bold mb-4"></h3>
+            <div id="modalContent" class="text-gray-700 whitespace-pre-wrap"></div>
+            <div class="flex justify-end mt-4">
+                <button id="closeModalButton" class="px-4 py-2 text-sm font-semibold text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors">Close</button>
+            </div>
+        </div>
+    </div>
 
-        // Function to render the application's UI
-        const renderApp = () => {
-            const container = document.getElementById('room-container');
-            container.innerHTML = '';
+    <!-- Loading Indicator -->
+    <div id="loadingIndicator" class="modal hidden">
+        <div class="flex flex-col items-center">
+            <div class="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+            <p class="mt-4 text-white text-lg font-semibold">Generating content...</p>
+        </div>
+    </div>
+
+    <script>
+        const roomDataRaw = `Room (Example: 408 PH),Full Name,Email,Position,Department ,Number of Members Inside the Office,Number of Desks Inside the Office,On leave,Active workforce
+301 PH,Islam Abdul-Azeem Fouad,islam.fouad@must.edu.eg,Associate Professor,Biomedical Engineering,5,4,0,5
+301 PH,Dr.mohamed omar ahmed omar,mohamed.omar@must.edu.eg,Assistant Professor,Biomedical Engineering,5,4,0,5
+302 PH,Hoda Alshayal,shaimaa.mohamed@must.edu.eg,Associate Professor,Architectural Engineering,3,3,0,3
+303 PH,Islam Wagih Hussein Safwat,islam.hussein@must.edu.eg,TA, Mechatronics Engineering,9,6,1,8
+303 PH,Eman alaa elden,eman.alaa@must.edu.eg,TA, Mechatronics Engineering,9,6,1,8
+303 PH,Ahmed Tarek Mohamed Ali,ahmed.ebrahim@must.edu.eg,TA,Basic Sciences,9,6,1,8
+303 PH,Mahinaz atfy moawad,mahinaz.mashhour@must.edu.eg,TA,Biomedical Engineering,9,6,1,8
+303 PH,Ahmed Hamdi Abd El Monem Ahmed ,ahmad.hamdi@must.edu.eg,TA,Computer and Software Engineering,9,6,1,8
+303 PH,Ibrahim Ahmed Ghonimi,ibrahim.ghonimi@must.edu.eg,TA,Construction Engineering,9,6,1,8
+303 PH,Ayah Abdulhamid Ali Alsweedy,ayah.alsweedy@must.edu.eg,TA,Construction Engineering,9,6,1,8
+303 PH,Ibrahim Ahmed Mahmoud ,ibrahim.mahmoud@must.edu.eg,TA,Construction Engineering,9,6,1,8
+304 PH,Aya Ahmed Ghamry,aya.ghamry@must.edu.eg,TA,Biomedical Engineering,6,6,1,5
+304 PH,Rehab Essam Eraky,rehab.essam@must.edu.eg,TA,Construction Engineering,6,6,1,5
+304 PH,Mostafa Nasr Ali Mohamed,mostafa.nasr@must.edu.eg,TA,Construction Engineering,6,6,1,5
+304 PH,Sara mohamed gamal,sara.gamal@must.edu.eg,TA,Construction Engineering,6,6,1,5
+304 PH,Eman Alsaeed Ebrahim Ataa,eman.ataa@must.edu.eg,TA,Electronics and Communications Engineering,6,6,1,5
+305 PH,Mazen Mohammad Abd Al-Rahim Nassef ,mazen.mohammad@must.edu.eg,Assistant Professor,Architectural Engineering,5,5,0,5
+305 PH,Nourhan Yehia Mohamed ,nourhan.yehia@must.edu.eg,TA,Biomedical Engineering,5,5,0,5
+305 PH,Ahmed Mohamed Mamdouh,ahmed.mamdouh@must.edu.eg,TA,Construction Engineering,5,5,0,5
+306 PH,Mina Nasr Kelleney ,mina.kelleney@must.edu.eg,TA,Construction Engineering,8,8,0,8
+306 PH,moataz ahmed ali,moataz.ahmed@must.edu.eg,TA,Construction Engineering,8,8,0,8
+306 PH,Mohamed Rady Ahmed Amen,mohamed.amen@must.edu.eg,TA,Construction Engineering,8,8,0,8
+306 PH,Hoda sayed,hoda.sayed@must.edu.eg,TA,Construction Engineering,8,8,0,8
+306 PH,Mina Nasr Kelleney,mina.kelleney@must.edu.eg,TA,Construction Engineering,8,8,0,8
+306 PH,Mohamed Rady Ahmed Amen,mohamed.amen@must.edu.eg,TA,Construction Engineering,8,8,0,8
+306 PH,Esraa mohammed Abdelwaged,esraa.mohammed@must.edu.eg,TA,Construction Engineering,8,8,0,8
+306 PH,Moataz ahmed ali nour eldin,moataz.eldin@must.edu.eg,TA,Construction Engineering,8,8,0,8
+307 PH,Ghada shaban Mohamed Ahmed,ghada.shaban@must.edu.eg,Assistant Professor,Electronics and Communications Engineering,5,5,0,5
+307 PH,Nehal Mohamed Ahmed Elsawy,nehal.mohamed@must.edu.eg,TA,Electronics and Communications Engineering,5,5,0,5
+307 PH,Eman khatab,eman.khatab@must.edu.eg,Assistant Professor,Industrial and Systems Engineering,5,5,0,5
+307 PH,Tarek Shaker,tarek.shaker@must.edu.eg,TA,Mechanical Engineering,5,5,0,5
+308 PH,Mohammed Saleh Mohamed Esmail,mohammed.saleh@must.edu.eg,Assistant Professor,Basic Sciences,4,4,0,4
+308 PH,Hesham Abd El-Hakim Fahim ,hesham.abd@must.edu.eg,Assistant Professor,Electronics and Communications Engineering,4,4,0,4
+322 PH,Dr. Yasmin Elsayed ,yasmin.elsayed@must.edu.eg,Assistant Professor,Electrical Power and Machines Engineering,2,2,0,2
+322 PH,heba mohamed abd el salam,heba.mohamed@must.edu.eg,TA,Electrical Power and Machines Engineering,2,2,0,2
+326 PH,Osama Abdel Rasheed Abdel Reheem ,osama.abdel@must.edu.eg,Assistant Professor,Construction Engineering,3,3,0,3
+326 PH,Mostafa Ahmed Mahdi ,mostafa.mahdi@must.edu.eg,Assistant Professor,Construction Engineering,3,3,0,3
+327 PH,Ahmed Almohamady Ibrahim Ali ,ahmed.almohamady@must.edu.eg,Assistant Professor,Construction Engineering,4,4,0,4
+327 PH,Atef Abdelmoghny Ragab ,atef.abdelmoghny@must.edu.eg,Assistant Professor,Construction Engineering,4,4,0,4
+327 PH,Ahmed Almohamady Ibrahim Ali ,ahmed.almohamady@must.edu.eg,Assistant Professor,Construction Engineering,4,4,0,4
+328 PH,Mohamed Fathy Abdelaziz,mohamed.fathy@must.edu.eg,Assistant Professor,Construction Engineering,6,6,0,6
+328 PH,Ahmed Sayed Abdelatty,ahmed.sayed@must.edu.eg,Associate Professor,Construction Engineering,6,6,0,6
+328 PH,Osama Abdel Rasheed Abdel Reheem ,osama.abdel@must.edu.eg,Assistant Professor,Construction Engineering,6,6,0,6
+328 PH,Hala Emad Elden Fouad,hala.emad@must.edu.eg,Assistant Professor,Construction Engineering,6,6,0,6
+328 PH,Ahmed Shaheen ,ahmed.shaheen@must.edu.eg,Associate Professor,Construction Engineering,6,6,0,6
+401 PH,Dalia Abdrabou Saad Abdrabou ,dalia.abdrabou@must.edu.eg,Assistant Professor,Basic Sciences,9,8,1,8
+401 PH,Mona Samy Ghareeb Bondok,mona.samy@must.edu.eg,Assistant Professor,Basic Sciences,9,8,1,8
+402 PH,Mohamed Ahmed Abdelmoatamed,mohamed.abdelmoatamed@must.edu.eg,TA,Basic Sciences,11,7,2,9
+402 PH,Walaa AbdelMoneim Mohamed Gabr,walaa.abdelmoneim@must.edu.eg,TA,Basic Sciences,11,7,2,9
+402 PH,Alzahraaalsayed,alzahraa.alsayed@must.edu.eg,TA,Basic Sciences,11,7,2,9
+402 PH,Magdy Ahmed,magdy.ahmed@must.edu.eg,TA,Basic Sciences,11,7,2,9
+402 PH,Ahmed Saeed Shehata ,ahmed.shehata@must.edu.eg,TA,Basic Sciences,11,7,2,9
+402 PH,Magdy Ahmed,magdy.ahmed@must.edu.eg,TA,Basic Sciences,11,7,2,9
+402 PH,Alzahraa Al sayef,alzahraa.alsayef@must.edu.eg,TA,Basic Sciences,11,7,2,9
+402 PH,Magdy Ahmed,magdy.ahmed@must.edu.eg,TA,Basic Sciences,11,7,2,9
+402 PH,Youssef Kamal Mohamed ,youssef.kamal@must.edu.eg,TA,Basic Sciences,11,7,2,9
+402 PH,Mahmoud Mohamed Bakry ,mahmoud.bakry@must.edu.eg,TA,Basic Sciences,11,7,2,9
+402 PH,Seham Ahmed kamal ,seham.ahmed@must.edu.eg,TA,Basic Sciences,11,7,2,9
+405 PH,Tarek Mohamed Abd Elbadia,tarek.abdelbadia@must.edu.eg,Associate Professor,Mechatronics Engineering,2,3,0,2
+406 PH,Rehab Mostafa Kamal,rehab.mostafa@must.edu.eg,TA,Architectural Engineering,12,10,4,8
+406 PH,Shimaa Abdelhakim,shimaa.abdelhakim@must.edu.eg,TA,Architectural Engineering,12,10,4,8
+406 PH,Esraa Mohamed,esraa.mohamed@must.edu.eg,TA,Biomedical Engineering,12,10,4,8
+406 PH,Doaa Ahmed Ramadan Elkasass,doaa.ramadan@must.edu.eg,TA,Biomedical Engineering,12,10,4,8
+406 PH,Esraa Hassan Ali Elsayed ,esraa.hassan@must.edu.eg,TA,Electronics and Communications Engineering,12,10,4,8
+407 PH,Mahmoud Abd El Samee Sakr,mahmoud.sakr@must.edu.eg,Assistant Professor,Basic Sciences,7,4,1,6
+407 PH,Maysaa Elwerdany,maysaa.elwerdany@must.edu.eg,Assistant Professor,Basic Sciences,7,4,1,6
+408 PH,Rabab Ahmed Ramadan,rabab.ramadan@must.edu.eg,Assistant Professor,Basic Sciences,7,4,0,7
+408 PH,Sayed Abdel Gawad,sayed.abdel@must.edu.eg,Assistant Professor,Basic Sciences,7,4,0,7
+408 PH,Mohamed Ali Sayed Saad,mohamed.saad@must.edu.eg,Assistant Professor,Basic Sciences,7,4,0,7
+408 PH,Abdul-naby Abdul-rahman Mohamed,abdul-naby.abdul-rahman@must.edu.eg,Assistant Professor,Basic Sciences,7,4,0,7
+408 PH,Rasha Hassan,rasha.hassan@must.edu.eg,Assistant Professor,Basic Sciences,7,4,0,7
+408 PH,Aya Nashat Elsharkawy ,aya.nashat@must.edu.eg,Assistant Professor,Basic Sciences,7,4,0,7
+409 PH,Omar Mohamed Elsayd Ragab,omar.elsayd@must.edu.eg,TA,Architectural Engineering,16,13,3,13
+409 PH,Mohamed Hisham ,mohamed.hisham@must.edu.eg,TA,Biomedical Engineering,16,13,3,13
+409 PH,Bilal Mohamed Fetouh Elhlwany ,bilal.elhlwany@must.edu.eg,TA,Computer and Software Engineering,16,13,3,13
+409 PH,Ahmed Sameer Abdallah Ali,ahmed.sameer@must.edu.eg,TA,Construction Engineering,16,13,3,13
+409 PH,Yassmin hassanin amin,yassmin.hassanin@must.edu.eg,TA,Construction Engineering,16,13,3,13
+409 PH,Alaa Mohamed Abdelrhman Sayed Abdelsalam ,alaa.abdelrhman@must.edu.eg,Assistant Professor,Construction Engineering,16,13,3,13
+409 PH,Mina Zarie Attallah ,mina.attallah@must.edu.eg,TA,Construction Engineering,16,13,3,13
+409 PH,Hossam eldeen mohamed elashry,hossam.eldeen@must.edu.eg,TA,Construction Engineering,16,13,3,13
+409 PH,Mohamed Ahmed Mohamed Ibrahim ,mohamed.ibrahim@must.edu.eg,TA,Construction Engineering,16,13,3,13
+409 PH,Khaled zaki yehia,khaled.yehia@must.edu.eg,TA,Electrical Power and Machines Engineering,16,13,3,13
+409 PH,Amir Girges Moawwad ,amir.moawwad@must.edu.eg,TA,Electrical Power and Machines Engineering,16,13,3,13
+409 PH,Mohamed Ramadan Qotb Mousa,mohamed.mousa@must.edu.eg,TA,Electrical Power and Machines Engineering,16,13,3,13
+409 PH,Islam Mohamed Hegab ,islam.hegab@must.edu.eg,TA,Architectural Engineering,16,13,3,13
+410 PH,Eslam Ibrahim Hamed Ibrahiem ,eslam.ibrahiem@must.edu.eg,TA,Mechatronics Engineering,11,8,0,11
+410 PH,Noha fathi Elgamal,noha.elgamal@must.edu.eg,Assistant Professor,Architectural Engineering,11,8,0,11
+410 PH,Ahmed Mostafa Abdeltawab,ahmed.abdeltawab@must.edu.eg,TA,Computer and Software Engineering,11,8,0,11
+410 PH,Nesma Abd el aziz,nesma.abd@must.edu.eg,TA,Computer and Software Engineering,11,8,0,11
+410 PH,Ola Adel Ramdan hemida ,ola.hemida@must.edu.eg,TA,Construction Engineering,11,8,0,11
+410 PH,Ahmed Tarek Ibrahim moawad ,ahmed.moawad@must.edu.eg,TA,Electronics and Communications Engineering,11,8,0,11
+410 PH,Ahmed Tarek Ibrahim moawad ,ahmed.moawad@must.edu.eg,TA,Electronics and Communications Engineering,11,8,0,11
+410 PH,Esraa Abdelhakim Mohamed ,esraa.abdelhakim@must.edu.eg,TA,Electronics and Communications Engineering,11,8,0,11
+410 PH,Gehad Atiya,gehad.atiya@must.edu.eg,TA,Electronics and Communications Engineering,11,8,0,11
+410 PH,Mohamed Abdelaleem,mohamed.abdelaleem@must.edu.eg,TA,Electronics and Communications Engineering,11,8,0,11
+410 PH,Eslam Ibrahim Hamed Ibrahiem Elgendy ,eslam.elgendy@must.edu.eg,TA,Mechanical Engineering,11,8,0,11
+412 PH,Ahmed Sabry Amin,ahmed.amin@must.edu.eg,Assistant Professor,Mechatronics Engineering,3,3,0,3
+413 PH,Hossam Aldeen Mohamed Zakaria,hossam.zakaria@must.edu.eg,Professor,Industrial and Systems Engineering,4,4,0,4
+413 PH,Ghafa M Adel Kholief ,ghada.kholief@must.edu.eg,Assistant Professor,Industrial and Systems Engineering,4,4,0,4
+413 PH,Hussein A. Helmy,hussein.helmy@must.edu.eg,Assistant Professor,Industrial and Systems Engineering,4,4,0,4
+415 PH,Adel Mohammad Abdel-latif Abdin ,adel.abdin@must.edu.eg,Assistant Professor,Electronics and Communications Engineering,2,2,0,2
+415 PH,Mamdouh Gouda ,mamdouh.gouda@must.edu.eg,Assistant Professor,Electronics and Communications Engineering,2,2,0,2
+501 PH,Mostafa Ahmed Ahmed Abdelrazik ,mostafa.abdelrazik@must.edu.eg,Assistant Professor,Computer and Software Engineering,3,3,0,3
+511 PH,Wael Bahlol,wael.bahlol@must.edu.eg,Assistant Professor,Architectural Engineering,3,3,0,3
+No Room,Farouk emam ,farouk.waked@must.edu.eg,TA, Mechatronics Engineering,NA,NA,0,14
+No Room,Abdullah mohamed abdulftah elbanna,abdullah.elbanna@must.edu.eg,TA, Mechatronics Engineering,NA,NA,0,14
+No Room,Waleed Elbadry,waleed.elbadry@must.edu.eg,TA, Mechatronics Engineering,NA,NA,0,14
+No Room,Khaled abdelnasser elshamandy ,khaled.elshamndy@must.edu.eg,TA, Mechatronics Engineering,NA,NA,0,14
+No Room,Karim Zakaria Rashid,karim.rashid@must.edu.eg,TA, Mechatronics Engineering,NA,NA,0,14
+No Room,karim mohamed mohamed yousef,karim.yousef@must.edu.eg,TA, Mechatronics Engineering,NA,NA,0,14
+No Room,Rabab Hussein Ibrahim Hussein,m.ali@must.edu.eg,Assistant Professor,Basic Sciences,NA,NA,0,14
+No Room,Mohamed Ahmed Mostafa,mohammed.mostafa@must.edu.eg,Assistant Professor,Electrical Power and Machines Engineering,NA,NA,0,14
+No Room,Mostafa Ibrahim Elgendy,mostafa.elgendy@must.edu.eg,TA,Electrical Power and Machines Engineering,NA,NA,0,14
+No Room,Mohamed Ahmed Mostafa,mohammed.mostafa@must.edu.eg,Assistant Professor,Electrical Power and Machines Engineering,NA,NA,0,14
+No Room,Omar Ashraf Abdelmawwgoud Zakaria,omar.zakaria@must.edu.eg,TA,Mechanical Engineering,NA,NA,0,14
+No Room,Mohamed ashraf mohamed ,mohamed.ashraf@must.edu.eg,TA,Mechanical Engineering,NA,NA,0,14
+No Room,Karim Zakaria Amin Rashid,karim.rashid@must.edu.eg,TA,Mechanical Engineering,NA,NA,0,14
+No Room,Ahmed hesham,ahmed.hesham@must.edu.eg,TA,Mechanical Engineering,NA,NA,0,14`;
+
+        // Function to parse the raw CSV data string into a structured JSON object
+        function parseRoomData(dataString) {
+            const data = {};
+            const lines = dataString.split('\n').filter(line => line.trim().length > 0);
             
-            const sortedRooms = Object.values(rooms).sort((a, b) => a.id.localeCompare(b.id));
+            // Assuming the first line is the header, skip it.
+            const rows = lines.slice(1);
 
-            if (sortedRooms.length === 0 && authReady) {
-                container.innerHTML = `
-                    <div class="text-center p-8">
-                        <p class="text-lg text-gray-500">No room data found. Please add a member to get started.</p>
-                    </div>
-                `;
-                return;
-            }
+            rows.forEach(row => {
+                const parts = row.split(',').map(part => part.trim());
 
-            sortedRooms.forEach(room => {
-                const roomCard = document.createElement('div');
-                roomCard.className = 'bg-white rounded-xl shadow-md p-6 mb-6 hover:shadow-lg transition-shadow duration-300';
-                roomCard.innerHTML = `
-                    <div class="flex justify-between items-center mb-4">
-                        <h2 class="text-2xl font-bold text-gray-800">${room.id}</h2>
-                        <span class="bg-blue-100 text-blue-800 text-sm font-semibold px-2.5 py-0.5 rounded-full">${room.active} Members</span>
-                    </div>
-                    <div class="text-gray-600 mb-4 space-y-2">
-                        <p><span class="font-semibold">Total Desks:</span> ${room.desks}</p>
-                        <p><span class="font-semibold">On Leave:</span> ${room.onLeave}</p>
-                    </div>
-                    
-                    <div class="space-y-4">
-                        <h3 class="font-semibold text-lg text-gray-700">Members:</h3>
-                        <ul class="space-y-2" id="member-list-${room.id}"></ul>
-                    </div>
+                if (parts.length < 9) {
+                    return;
+                }
 
-                    <div class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2 mt-6">
-                        <button class="add-member-btn w-full bg-green-500 text-white rounded-lg px-4 py-2 font-semibold hover:bg-green-600 transition-colors duration-300" data-room-id="${room.id}">
-                            Add Member
-                        </button>
-                        <button class="summarize-btn w-full bg-indigo-500 text-white rounded-lg px-4 py-2 font-semibold hover:bg-indigo-600 transition-colors duration-300" data-room-id="${room.id}">
-                            Summarize Room ✨
-                        </button>
-                    </div>
-                `;
-                container.appendChild(roomCard);
+                const [roomName, fullName, email, position, department, members, desks, onLeave, active] = parts;
 
-                const memberList = roomCard.querySelector(`#member-list-${room.id}`);
-                const people = JSON.parse(room.people); // Parse the JSON string
-                people.forEach(member => {
-                    const memberItem = document.createElement('li');
-                    memberItem.className = 'flex items-center justify-between p-3 bg-gray-50 rounded-lg shadow-sm hover:bg-gray-100 transition-colors duration-200';
-                    memberItem.innerHTML = `
-                        <div class="flex-grow">
-                            <h4 class="font-medium text-gray-800">${member.name}</h4>
-                            <p class="text-sm text-gray-600 truncate">${member.position} - ${member.department}</p>
-                            <p class="text-sm text-gray-600 truncate">${member.email}</p>
-                        </div>
-                        <button class="email-draft-btn bg-blue-500 text-white text-sm rounded-full px-4 py-1 ml-4 font-semibold hover:bg-blue-600 transition-colors duration-300" data-member='${JSON.stringify(member)}' data-room-id="${room.id}">Email Draft ✨</button>
-                        <button class="delete-member-btn text-red-500 hover:text-red-700 ml-2" data-room-id="${room.id}" data-member-email="${member.email}">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
-                            </svg>
-                        </button>
-                    `;
-                    memberList.appendChild(memberItem);
-                });
-            });
-
-            // Re-attach event listeners after rendering
-            attachEventListeners();
-        };
-
-        const attachEventListeners = () => {
-            document.querySelectorAll('.add-member-btn').forEach(button => {
-                button.onclick = (e) => showAddMemberModal(e.target.dataset.roomId);
-            });
-            document.querySelectorAll('.summarize-btn').forEach(button => {
-                button.onclick = (e) => summarizeRoom(e.target.dataset.roomId);
-            });
-            document.querySelectorAll('.email-draft-btn').forEach(button => {
-                button.onclick = (e) => draftEmail(JSON.parse(e.target.dataset.member), e.target.dataset.roomId);
-            });
-            document.querySelectorAll('.delete-member-btn').forEach(button => {
-                button.onclick = (e) => deleteMember(e.target.dataset.roomId, e.target.dataset.memberEmail);
-            });
-        };
-
-        const showModal = (title, content, actions) => {
-            const modal = document.createElement('div');
-            modal.id = 'info-modal';
-            modal.className = 'fixed inset-0 bg-gray-600 bg-opacity-75 overflow-y-auto h-full w-full z-50 transition-opacity duration-300 flex items-center justify-center';
-            modal.innerHTML = `
-                <div class="relative p-8 bg-white w-full max-w-xl mx-auto rounded-xl shadow-lg transform transition-transform duration-300 scale-95">
-                    <div class="flex justify-between items-center pb-3">
-                        <h3 class="text-2xl font-bold text-gray-900">${title}</h3>
-                        <button class="close-modal-btn text-gray-500 hover:text-gray-800">
-                            <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                        </button>
-                    </div>
-                    <div class="modal-content mt-4 text-gray-700">
-                        ${content}
-                    </div>
-                    <div class="modal-actions flex justify-end space-x-2 pt-4">
-                        ${actions}
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(modal);
-            document.querySelector('.close-modal-btn').onclick = () => document.body.removeChild(modal);
-        };
-        
-        const showAddMemberModal = (roomId) => {
-            const content = `
-                <form id="add-member-form" class="space-y-4">
-                    <div>
-                        <label for="memberName" class="block text-sm font-medium text-gray-700">Full Name</label>
-                        <input type="text" id="memberName" name="memberName" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
-                    </div>
-                    <div>
-                        <label for="memberEmail" class="block text-sm font-medium text-gray-700">Email</label>
-                        <input type="email" id="memberEmail" name="memberEmail" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
-                    </div>
-                    <div>
-                        <label for="memberPosition" class="block text-sm font-medium text-gray-700">Position</label>
-                        <input type="text" id="memberPosition" name="memberPosition" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
-                    </div>
-                    <div>
-                        <label for="memberDepartment" class="block text-sm font-medium text-gray-700">Department</label>
-                        <input type="text" id="memberDepartment" name="memberDepartment" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
-                    </div>
-                </form>
-            `;
-            const actions = `<button type="submit" form="add-member-form" class="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 font-semibold">Add Member</button>`;
-            
-            showModal(`Add Member to ${roomId}`, content, actions);
-            
-            document.getElementById('add-member-form').onsubmit = (e) => {
-                e.preventDefault();
-                const name = document.getElementById('memberName').value;
-                const email = document.getElementById('memberEmail').value;
-                const position = document.getElementById('memberPosition').value;
-                const department = document.getElementById('memberDepartment').value;
-                
-                addMember(roomId, { name, email, position, department });
-                document.body.removeChild(document.getElementById('info-modal'));
-            };
-        };
-        
-        const addMember = async (roomId, newMember) => {
-            const roomRef = doc(db, "artifacts", firebaseConfig.appId, "public", "data", "office_rooms", roomId);
-            const roomData = rooms[roomId];
-            
-            if (roomData) {
-                // Parse the JSON string from the database
-                const people = JSON.parse(roomData.people);
-                people.push(newMember);
-
-                // Update counts
-                const updatedMembers = roomData.members + 1;
-                const updatedActive = roomData.active + 1;
-
-                // Serialize the array back to a JSON string for Firestore
-                await setDoc(roomRef, { 
-                    ...roomData,
-                    members: updatedMembers,
-                    active: updatedActive,
-                    people: JSON.stringify(people) 
-                });
-            } else {
-                // If room doesn't exist, create it
-                const newRoom = {
-                    id: roomId,
-                    members: 1,
-                    desks: 0,
-                    onLeave: 0,
-                    active: 1,
-                    people: JSON.stringify([newMember])
+                const room = roomName;
+                const person = {
+                    name: fullName,
+                    email: email,
+                    position: position,
+                    department: department,
                 };
-                await setDoc(roomRef, newRoom);
-            }
-        };
 
-        const deleteMember = async (roomId, memberEmail) => {
-            const roomRef = doc(db, "artifacts", firebaseConfig.appId, "public", "data", "office_rooms", roomId);
-            const roomData = rooms[roomId];
-            
-            if (roomData) {
-                const people = JSON.parse(roomData.people);
-                const updatedPeople = people.filter(member => member.email !== memberEmail);
-
-                // Update counts
-                const updatedMembers = roomData.members - 1;
-                const updatedActive = roomData.active - 1;
-
-                if (updatedMembers <= 0) {
-                    await deleteDoc(roomRef);
-                } else {
-                    await setDoc(roomRef, {
-                        ...roomData,
-                        members: updatedMembers,
-                        active: updatedActive,
-                        people: JSON.stringify(updatedPeople)
-                    });
-                }
-            }
-        };
-
-        const summarizeRoom = async (roomId) => {
-            const modalContent = document.getElementById('info-modal-content');
-            
-            const roomData = rooms[roomId];
-            if (!roomData) return;
-
-            const people = JSON.parse(roomData.people);
-            const membersString = people.map(p => `${p.name} (${p.position}, ${p.department})`).join(', ');
-
-            const prompt = `Based on the following list of team members, provide a professional, concise, single-paragraph summary of their team composition, roles, and departments. List of members: ${membersString}.`;
-
-            showModal('Room Summary', `<div id="summary-content" class="text-gray-700">
-                <div class="flex items-center justify-center space-x-2 text-gray-500">
-                    <svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <span>Generating summary...</span>
-                </div>
-            </div>`, '');
-
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
-            const payload = {
-                contents: [{ parts: [{ text: prompt }] }]
-            };
-
-            try {
-                const response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                if (!response.ok) {
-                    throw new Error(`API response error: ${response.statusText}`);
-                }
-
-                const result = await response.json();
-                const summary = result.candidates?.[0]?.content?.parts?.[0]?.text;
-                document.querySelector('#summary-content').innerHTML = summary || 'Could not generate summary. Please try again.';
-
-            } catch (error) {
-                console.error("Gemini API Error:", error);
-                document.querySelector('#summary-content').innerHTML = 'Could not generate summary. Please try again.';
-            }
-        };
-
-        const draftEmail = async (member, roomId) => {
-            const prompt = `Draft a concise and professional introductory email to a new colleague named ${member.name}. Their position is ${member.position} in the ${member.department} department, located in room ${roomId}. The email should be welcoming and friendly, without mentioning I am an AI. It should also suggest setting up a brief chat to get to know each other.`;
-
-            showModal(`Email Draft for ${member.name}`, `<div id="email-content" class="text-gray-700">
-                <div class="flex items-center justify-center space-x-2 text-gray-500">
-                    <svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <span>Drafting email...</span>
-                </div>
-            </div>`, `<button id="copy-email-btn" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-semibold" style="display:none;">Copy to Clipboard</button>`);
-
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
-            const payload = {
-                contents: [{ parts: [{ text: prompt }] }]
-            };
-
-            try {
-                const response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                if (!response.ok) {
-                    throw new Error(`API response error: ${response.statusText}`);
-                }
-
-                const result = await response.json();
-                const emailDraft = result.candidates?.[0]?.content?.parts?.[0]?.text;
-                
-                const emailContentElement = document.querySelector('#email-content');
-                emailContentElement.innerHTML = `<pre class="whitespace-pre-wrap font-mono text-sm">${emailDraft || 'Could not draft email. Please try again.'}</pre>`;
-                
-                if (emailDraft) {
-                    document.querySelector('#copy-email-btn').style.display = 'block';
-                    document.querySelector('#copy-email-btn').onclick = () => {
-                        const textarea = document.createElement('textarea');
-                        textarea.value = emailDraft;
-                        document.body.appendChild(textarea);
-                        textarea.select();
-                        try {
-                            document.execCommand('copy');
-                            alert('Email copied to clipboard!');
-                        } catch (err) {
-                            console.error('Failed to copy text:', err);
-                        }
-                        document.body.removeChild(textarea);
+                // Initialize the room if it doesn't exist
+                if (!data[room]) {
+                    data[room] = {
+                        members: isNaN(parseInt(members)) ? 0 : parseInt(members, 10),
+                        desks: isNaN(parseInt(desks)) ? 0 : parseInt(desks, 10),
+                        onLeave: isNaN(parseInt(onLeave)) ? 0 : parseInt(onLeave, 10),
+                        active: isNaN(parseInt(active)) ? 0 : parseInt(active, 10),
+                        people: []
                     };
                 }
 
-            } catch (error) {
-                console.error("Gemini API Error:", error);
-                document.querySelector('#email-content').innerHTML = 'Could not draft email. Please try again.';
-            }
-        };
+                // Add the person to the room
+                data[room].people.push(person);
+            });
+            return data;
+        }
 
-        // Initialize Firebase Authentication and Firestore listener
-        document.addEventListener('DOMContentLoaded', () => {
-            onAuthStateChanged(auth, async (user) => {
-                if (user) {
-                    userId = user.uid;
-                    document.getElementById('user-id-display').textContent = `User ID: ${userId}`;
-                    authReady = true;
-                    
-                    // Firestore listener for real-time updates
-                    const roomCollectionRef = collection(db, "artifacts", firebaseConfig.appId, "public", "data", "office_rooms");
-                    onSnapshot(roomCollectionRef, (querySnapshot) => {
-                        rooms = {};
-                        querySnapshot.forEach((doc) => {
-                            rooms[doc.id] = { id: doc.id, ...doc.data() };
-                        });
-                        renderApp();
-                    }, (error) => {
-                        console.error("Firestore onSnapshot error:", error);
-                        // Handle the error gracefully, maybe show a message to the user
-                    });
-                    
+        const roomData = parseRoomData(roomDataRaw);
+        const roomListContainer = document.getElementById('roomList');
+        const searchInput = document.getElementById('searchInput');
+        const contentModal = document.getElementById('contentModal');
+        const modalTitle = document.getElementById('modalTitle');
+        const modalContent = document.getElementById('modalContent');
+        const closeModalButton = document.getElementById('closeModalButton');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+
+        closeModalButton.addEventListener('click', () => {
+            contentModal.classList.add('hidden');
+        });
+
+        // Function to show modal with generated content
+        function showModal(title, content) {
+            modalTitle.textContent = title;
+            modalContent.textContent = content;
+            contentModal.classList.remove('hidden');
+        }
+        
+        // Show loading indicator
+        function showLoading() {
+            loadingIndicator.classList.remove('hidden');
+        }
+
+        // Hide loading indicator
+        function hideLoading() {
+            loadingIndicator.classList.add('hidden');
+        }
+
+        // Generate summary using Gemini API
+        async function generateSummary(room, people) {
+            showLoading();
+            const peopleList = people.map(p => `- ${p.name}, ${p.position}, ${p.department}`).join('\n');
+            const prompt = `Summarize the people in this room, considering their positions and departments:\n\nRoom: ${room}\n\nMembers:\n${peopleList}\n\nProvide a concise, professional summary in a single paragraph.`;
+
+            const apiKey = "";
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+            try {
+                const payload = {
+                    contents: [{ parts: [{ text: prompt }] }],
+                    // The tools property was removed as it's not needed for this text generation task
+                };
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+                
+                if (result.candidates && result.candidates[0] && result.candidates[0].content && result.candidates[0].content.parts[0]) {
+                    const summary = result.candidates[0].content.parts[0].text;
+                    showModal(`Summary for Room ${room}`, summary);
                 } else {
-                    // Anonymous sign-in
-                    try {
-                        await signInAnonymously(auth);
-                    } catch (error) {
-                        console.error("Anonymous Sign-in failed:", error);
-                        // Using a simple modal as a replacement for alert()
-                        showModal("Authentication Failed", "Please check your Firebase configuration and make sure Anonymous Authentication is enabled.", "");
+                    showModal("Error", "Could not generate summary. Please try again.");
+                }
+            } catch (error) {
+                showModal("Error", "Failed to connect to the API. Please check your network connection.");
+                console.error("API call failed:", error);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // Generate email draft using Gemini API
+        async function generateEmailDraft(person) {
+            showLoading();
+            const prompt = `Draft a concise, professional email to introduce myself to this person. The email should be a single paragraph and should not include a subject line or salutation/closing. Use this information:
+                - Name: ${person.name}
+                - Position: ${person.position}
+                - Department: ${person.department}
+                - Email: ${person.email}`;
+
+            const apiKey = "";
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+            try {
+                const payload = {
+                    contents: [{ parts: [{ text: prompt }] }],
+                    // The tools property was removed as it's not needed for this text generation task
+                };
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+
+                if (result.candidates && result.candidates[0] && result.candidates[0].content && result.candidates[0].content.parts[0]) {
+                    const draft = result.candidates[0].content.parts[0].text;
+                    showModal(`Email Draft for ${person.name}`, draft);
+                } else {
+                    showModal("Error", "Could not generate email draft. Please try again.");
+                }
+            } catch (error) {
+                showModal("Error", "Failed to connect to the API. Please check your network connection.");
+                console.error("API call failed:", error);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // Function to render a single room card
+        function createRoomCard(room, data) {
+            const card = document.createElement('div');
+            card.className = 'room-card bg-white rounded-2xl shadow-lg p-6 flex flex-col justify-between';
+            card.innerHTML = `
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <h2 class="text-2xl font-bold text-gray-800">${room}</h2>
+                        <span class="text-xs font-semibold text-gray-500 bg-gray-200 rounded-full px-3 py-1">${data.people.length} members</span>
+                    </div>
+                    <div class="text-sm text-gray-500 space-y-1 mt-4">
+                        <p><strong>Desks:</strong> ${data.desks}</p>
+                        <p><strong>On leave:</strong> ${data.onLeave}</p>
+                        <p><strong>Active:</strong> ${data.active}</p>
+                    </div>
+                </div>
+                <div class="mt-4 flex flex-col space-y-2">
+                    <button class="toggle-details w-full px-4 py-2 text-sm font-semibold text-blue-700 bg-blue-100 rounded-lg hover:bg-blue-200 transition-colors">
+                        Show People
+                    </button>
+                    <button class="summarize-room w-full px-4 py-2 text-sm font-semibold text-purple-700 bg-purple-100 rounded-lg hover:bg-purple-200 transition-colors">
+                        Summarize Room ✨
+                    </button>
+                    <div class="details hidden mt-4 space-y-4 max-h-48 overflow-y-auto">
+                        <!-- People details will go here -->
+                    </div>
+                </div>
+            `;
+            
+            const detailsContainer = card.querySelector('.details');
+            const toggleButton = card.querySelector('.toggle-details');
+            const summarizeButton = card.querySelector('.summarize-room');
+
+            toggleButton.addEventListener('click', () => {
+                const isHidden = detailsContainer.classList.contains('hidden');
+                detailsContainer.classList.toggle('hidden');
+                toggleButton.textContent = isHidden ? 'Hide People' : 'Show People';
+            });
+
+            summarizeButton.addEventListener('click', () => {
+                generateSummary(room, data.people);
+            });
+
+            // Populate the list of people
+            data.people.forEach(person => {
+                const personElement = document.createElement('div');
+                personElement.className = 'p-3 bg-gray-50 rounded-lg shadow-inner';
+                personElement.innerHTML = `
+                    <p class="font-semibold text-gray-800">${person.name}</p>
+                    <p class="text-xs text-gray-600">${person.position} - ${person.department}</p>
+                    <button class="email-draft mt-2 px-3 py-1 text-xs font-semibold text-green-700 bg-green-100 rounded-lg hover:bg-green-200 transition-colors">
+                        Email Draft ✨
+                    </button>
+                `;
+                personElement.querySelector('.email-draft').addEventListener('click', () => {
+                    generateEmailDraft(person);
+                });
+                detailsContainer.appendChild(personElement);
+            });
+
+            return card;
+        }
+
+        // Function to render all room cards
+        function renderRooms(filteredData) {
+            roomListContainer.innerHTML = '';
+            const sortedRooms = Object.keys(filteredData).sort();
+            sortedRooms.forEach(room => {
+                const card = createRoomCard(room, filteredData[room]);
+                roomListContainer.appendChild(card);
+            });
+        }
+
+        // Function to filter rooms based on search input
+        function filterRooms(query) {
+            const lowerCaseQuery = query.toLowerCase();
+            const filtered = {};
+            for (const room in roomData) {
+                if (room.toLowerCase().includes(lowerCaseQuery)) {
+                    filtered[room] = roomData[room];
+                } else {
+                    const matchedPeople = roomData[room].people.filter(person => 
+                        person.name.toLowerCase().includes(lowerCaseQuery) ||
+                        person.position.toLowerCase().includes(lowerCaseQuery) ||
+                        person.department.toLowerCase().includes(lowerCaseQuery)
+                    );
+                    if (matchedPeople.length > 0) {
+                        filtered[room] = { ...roomData[room], people: matchedPeople };
                     }
                 }
-            });
+            }
+            renderRooms(filtered);
+        }
+
+        // Initial render
+        renderRooms(roomData);
+
+        // Event listener for search input
+        searchInput.addEventListener('input', (e) => {
+            filterRooms(e.target.value);
         });
+
     </script>
-</head>
-<body class="bg-gray-100 font-sans p-4 sm:p-8">
-
-    <div class="max-w-4xl mx-auto">
-        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8">
-            <h1 class="text-4xl font-extrabold text-gray-900 mb-2 sm:mb-0">Office Room Directory</h1>
-            <p id="user-id-display" class="text-sm font-medium text-gray-500 bg-gray-200 rounded-full px-4 py-2 truncate max-w-xs sm:max-w-none">Loading User ID...</p>
-        </div>
-        
-        <div id="room-container">
-            <!-- Room cards will be rendered here by JavaScript -->
-            <div class="text-center p-8">
-                <p class="text-lg text-gray-500">Loading room data...</p>
-                <div class="flex items-center justify-center space-x-2 text-gray-500 mt-4">
-                    <svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <span>Please wait...</span>
-                </div>
-            </div>
-        </div>
-
-    </div>
-
 </body>
 </html>
