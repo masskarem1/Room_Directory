@@ -49,6 +49,7 @@
             border-radius: 12px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             max-width: 90%;
+            width: 500px;
             max-height: 80%;
             overflow-y: auto;
             position: relative;
@@ -88,9 +89,9 @@
 
     <!-- Loading Indicator -->
     <div id="loadingIndicator" class="modal hidden">
-        <div class="flex flex-col items-center">
+        <div class="flex flex-col items-center justify-center p-8 bg-white rounded-lg shadow-xl">
             <div class="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-            <p class="mt-4 text-white text-lg font-semibold">Generating content...</p>
+            <p class="mt-4 text-gray-700 text-lg font-semibold">Generating content...</p>
         </div>
     </div>
 
@@ -286,82 +287,7 @@ No Room,Ahmed hesham,ahmed.hesham@must.edu.eg,TA,Mechanical Engineering,NA,NA,0,
         function hideLoading() {
             loadingIndicator.classList.add('hidden');
         }
-
-        // Generate summary using Gemini API
-        async function generateSummary(room, people) {
-            showLoading();
-            const peopleList = people.map(p => `- ${p.name}, ${p.position}, ${p.department}`).join('\n');
-            const prompt = `Summarize the people in this room, considering their positions and departments:\n\nRoom: ${room}\n\nMembers:\n${peopleList}\n\nProvide a concise, professional summary in a single paragraph.`;
-
-            const apiKey = "";
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
-
-            try {
-                const payload = {
-                    contents: [{ parts: [{ text: prompt }] }],
-                    // The tools property was removed as it's not needed for this text generation task
-                };
-
-                const response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                const result = await response.json();
-                
-                if (result.candidates && result.candidates[0] && result.candidates[0].content && result.candidates[0].content.parts[0]) {
-                    const summary = result.candidates[0].content.parts[0].text;
-                    showModal(`Summary for Room ${room}`, summary);
-                } else {
-                    showModal("Error", "Could not generate summary. Please try again.");
-                }
-            } catch (error) {
-                showModal("Error", "Failed to connect to the API. Please check your network connection.");
-                console.error("API call failed:", error);
-            } finally {
-                hideLoading();
-            }
-        }
-
-        // Generate email draft using Gemini API
-        async function generateEmailDraft(person) {
-            showLoading();
-            const prompt = `Draft a concise, professional email to introduce myself to this person. The email should be a single paragraph and should not include a subject line or salutation/closing. Use this information:
-                - Name: ${person.name}
-                - Position: ${person.position}
-                - Department: ${person.department}
-                - Email: ${person.email}`;
-
-            const apiKey = "";
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
-
-            try {
-                const payload = {
-                    contents: [{ parts: [{ text: prompt }] }],
-                    // The tools property was removed as it's not needed for this text generation task
-                };
-
-                const response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                const result = await response.json();
-
-                if (result.candidates && result.candidates[0] && result.candidates[0].content && result.candidates[0].content.parts[0]) {
-                    const draft = result.candidates[0].content.parts[0].text;
-                    showModal(`Email Draft for ${person.name}`, draft);
-                } else {
-                    showModal("Error", "Could not generate email draft. Please try again.");
-                }
-            } catch (error) {
-                showModal("Error", "Failed to connect to the API. Please check your network connection.");
-                console.error("API call failed:", error);
-            } finally {
-                hideLoading();
-            }
-        }
-
+        
         // Function to render a single room card
         function createRoomCard(room, data) {
             const card = document.createElement('div');
@@ -382,10 +308,7 @@ No Room,Ahmed hesham,ahmed.hesham@must.edu.eg,TA,Mechanical Engineering,NA,NA,0,
                     <button class="toggle-details w-full px-4 py-2 text-sm font-semibold text-blue-700 bg-blue-100 rounded-lg hover:bg-blue-200 transition-colors">
                         Show People
                     </button>
-                    <button class="summarize-room w-full px-4 py-2 text-sm font-semibold text-purple-700 bg-purple-100 rounded-lg hover:bg-purple-200 transition-colors">
-                        Summarize Room ✨
-                    </button>
-                    <div class="details hidden mt-4 space-y-4 max-h-48 overflow-y-auto">
+                    <div class="details hidden mt-4 space-y-4 max-h-48 overflow-y-auto p-2">
                         <!-- People details will go here -->
                     </div>
                 </div>
@@ -393,16 +316,11 @@ No Room,Ahmed hesham,ahmed.hesham@must.edu.eg,TA,Mechanical Engineering,NA,NA,0,
             
             const detailsContainer = card.querySelector('.details');
             const toggleButton = card.querySelector('.toggle-details');
-            const summarizeButton = card.querySelector('.summarize-room');
-
+            
             toggleButton.addEventListener('click', () => {
                 const isHidden = detailsContainer.classList.contains('hidden');
                 detailsContainer.classList.toggle('hidden');
                 toggleButton.textContent = isHidden ? 'Hide People' : 'Show People';
-            });
-
-            summarizeButton.addEventListener('click', () => {
-                generateSummary(room, data.people);
             });
 
             // Populate the list of people
@@ -412,13 +330,7 @@ No Room,Ahmed hesham,ahmed.hesham@must.edu.eg,TA,Mechanical Engineering,NA,NA,0,
                 personElement.innerHTML = `
                     <p class="font-semibold text-gray-800">${person.name}</p>
                     <p class="text-xs text-gray-600">${person.position} - ${person.department}</p>
-                    <button class="email-draft mt-2 px-3 py-1 text-xs font-semibold text-green-700 bg-green-100 rounded-lg hover:bg-green-200 transition-colors">
-                        Email Draft ✨
-                    </button>
                 `;
-                personElement.querySelector('.email-draft').addEventListener('click', () => {
-                    generateEmailDraft(person);
-                });
                 detailsContainer.appendChild(personElement);
             });
 
@@ -467,3 +379,4 @@ No Room,Ahmed hesham,ahmed.hesham@must.edu.eg,TA,Mechanical Engineering,NA,NA,0,
     </script>
 </body>
 </html>
+
